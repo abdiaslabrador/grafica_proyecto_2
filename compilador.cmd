@@ -1,0 +1,1 @@
+g++ -o main main.cpp -I glad/include -Lglad/lib  -lglfw3dll -lopengl32
