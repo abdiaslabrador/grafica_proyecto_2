@@ -16,22 +16,14 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
 void processInput(GLFWwindow *window);
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 unsigned int loadTexture(char const * path);
 
-glm::vec3 cameraPos   = glm::vec3(0.0f, 0.f,  0.0f);
-glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, 0.0f);
+const float orbitalRadius =  10.0f;
+glm::vec3 cameraPos   = glm::vec3(0.0f, 0.f,  orbitalRadius);
 glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
 
-//mause
-bool firstMouse = true;
-float yaw   = -90.0f;	
-float pitch =  0.0f;
-float lastX =  800.0f / 2.0;
-float lastY =  600.0 / 2.0;
-float fov   =  45.0f;
-
+//zoom
+float fov = 45.0f;
 //tiempo de velocidad de movimiento
 float deltaTime = 0.0f;	
 float lastFrame = 0.0f; 
@@ -44,14 +36,15 @@ glm::vec3 lightDirectionalPos(-1.0f, -1.0f, 0.0f);
 //texturas
 unsigned int texture1;
 unsigned int texture2;
-signed int textureSelection=1;
+signed int textureSelection=0;
 
 //movimiento orbital
-int orbitalDirection= 1;
-const int DERECHA = 1;
-const int IZQUIERDA = 2;
-const int ARRIBA = 3;
-const int ABAJO = 4;
+float _x = 0.0f;
+float _y = 0.0f;
+float _z = 0.0f;
+
+float acumulador_h = 0.0f;
+float acumulador_v = 0.0f;
 
 int main(){ 
         
@@ -76,14 +69,11 @@ int main(){
         glfwTerminate();
     } 
 
-glfwSetCursorPosCallback(window, mouse_callback);
-glfwSetScrollCallback(window, scroll_callback);
 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-Shader centarCuboContainerShader("shaders/shader.vs", "shaders/shader.fs");
+Shader centerCuboContainerShader("shaders/shader.vs", "shaders/shader.fs");
 Shader lightStaticShader("shaders/cubolightStatic.vs", "shaders/cubolightStatic.fs");
 Shader lightRoundShader("shaders/cubolightRound.vs", "shaders/cubolightRound.fs");
-// Shader lightDirectionalShader("shaders/cubolightDirectional.vs", "shaders/cubolightDirectional.fs");
 
 glEnable(GL_DEPTH_TEST);
 
@@ -131,10 +121,19 @@ float vertices_triangulo[] = {
         -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  0.0f,
         -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
 };
-    
-    texture1 = loadTexture("images/mosaic_figura3.jpg");
-    texture2 = loadTexture("images/mosaic_figura3_especular.jpg");
 
+    //texturas
+    unsigned int txs_difusas[3];
+    unsigned int  txs_especulares[3];
+
+    txs_difusas[0] = loadTexture("images/mosaic_figura3.jpg");
+    txs_especulares[0] = loadTexture("images/mosaic_figura3_especular.jpg");
+    txs_difusas[1] = loadTexture("images/grass_figura2.jpg");
+    txs_especulares[1] = loadTexture("images/grass_figura2_especular.jpg");
+    txs_difusas[2] = loadTexture("images/bloques_figura1.jpg");
+    txs_especulares[2] = loadTexture("images/bloques_figura1_especular.jpg");
+
+    //figuras
     unsigned int cuadrado_vao;
     glGenVertexArrays(1, &cuadrado_vao);
     glBindVertexArray(cuadrado_vao);
@@ -168,19 +167,10 @@ float vertices_triangulo[] = {
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-
-    // unsigned int lightDirectional_vao;
-    // glGenVertexArrays(1, &lightDirectional_vao);
-    // glBindVertexArray(lightDirectional_vao);
-    // glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(vertices_triangulo), vertices_triangulo, GL_STATIC_DRAW); 
     
-    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-    // glEnableVertexAttribArray(0);
-    
-    centarCuboContainerShader.use();
-    centarCuboContainerShader.setInt("material.diffuse", 0);
-    centarCuboContainerShader.setInt("material.specular", 1);
+    centerCuboContainerShader.use();
+    centerCuboContainerShader.setInt("material.diffuse", 0);
+    centerCuboContainerShader.setInt("material.specular", 1);
     
    while (!glfwWindowShouldClose(window))
     {
@@ -192,71 +182,53 @@ float vertices_triangulo[] = {
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, texture2);
-
-        const float orbitalRadius =  10.0f;
-        const float orbitalSpeed = 8.0f;
-        const float camerax = sin(glfwGetTime()/ orbitalSpeed)  * orbitalRadius;
-        const float cameraz = cos(glfwGetTime()/ orbitalSpeed) * orbitalRadius;
-
-        switch ( orbitalDirection ) {
-            case DERECHA:
-                    cameraPos = glm::vec3(camerax ,  0.0f , cameraz );
-                    break;
-            case  IZQUIERDA:
-                    cameraPos = glm::vec3(-camerax ,  0.0f , cameraz );
-                    break;
-            case  ARRIBA:
-                    cameraPos = glm::vec3(camerax ,  cameraz , 0.0f );
-                    break;
-            case  ABAJO:
-                    cameraPos = glm::vec3(camerax ,  -cameraz , 0.0f );
-                    break;
-            }
+        glBindTexture(GL_TEXTURE_2D, txs_difusas[textureSelection]);
         
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, txs_especulares[textureSelection]);
+
         glm::mat4 projection = glm::perspective(glm::radians(fov), 800.0f / 600.0f, 0.1f, 100.0f);        
-        glm::mat4 view = glm::lookAt(cameraPos, cameraFront, cameraUp);
+        glm::mat4 view = glm::lookAt(cameraPos, glm::vec3(0.0f, 0.0f, 0.0f), cameraUp);
         glm::mat4 model;
         model         = glm::mat4(1.0f);
 
-        centarCuboContainerShader.use();
-        centarCuboContainerShader.setMat4("projection", projection);
-        centarCuboContainerShader.setMat4("view", view);
+        centerCuboContainerShader.use();
+        centerCuboContainerShader.setMat4("projection", projection);
+        centerCuboContainerShader.setMat4("view", view);
 
-        centarCuboContainerShader.setFloat("material.shininess", 64.0f);
-        centarCuboContainerShader.setVec3("lightDirection.ambient",  0.2f, 0.2f, 0.2f);
-        centarCuboContainerShader.setVec3("lightDirection.diffuse",  0.5f, 0.5f, 0.5f); 
-        centarCuboContainerShader.setVec3("lightDirection.specular", 	1.0f, 1.0f, 1.0f);
-        centarCuboContainerShader.setVec3("lightDirection.direction", lightDirectionalPos.x, lightDirectionalPos.y, lightDirectionalPos.z);
+        centerCuboContainerShader.setFloat("material.shininess", 64.0f);
+        centerCuboContainerShader.setVec3("lightDirection.ambient",  0.2f, 0.2f, 0.2f);
+        centerCuboContainerShader.setVec3("lightDirection.diffuse",  0.5f, 0.5f, 0.5f); 
+        centerCuboContainerShader.setVec3("lightDirection.specular", 	1.0f, 1.0f, 1.0f);
+        centerCuboContainerShader.setVec3("lightDirection.direction", lightDirectionalPos.x, lightDirectionalPos.y, lightDirectionalPos.z);
 
-        centarCuboContainerShader.setVec3("lightPoints[0].ambient",  0.2f, 0.2f, 0.2f);
-        centarCuboContainerShader.setVec3("lightPoints[0].diffuse",  0.5f, 0.5f, 0.5f); 
-        centarCuboContainerShader.setVec3("lightPoints[0].specular", 	1.0f, 1.0f, 1.0f);
-        centarCuboContainerShader.setVec3("lightPoints[0].position", lightStaticPos.x, lightStaticPos.y, lightStaticPos.z);
-        centarCuboContainerShader.setFloat("lightPoints[0].constant", 	1.0f);
-        centarCuboContainerShader.setFloat("lightPoints[0].linear", 	0.0014);
-        centarCuboContainerShader.setFloat("lightPoints[0].cuadratic", 0.000007);
+        centerCuboContainerShader.setVec3("lightPoints[0].ambient",  0.2f, 0.2f, 0.2f);
+        centerCuboContainerShader.setVec3("lightPoints[0].diffuse",  0.5f, 0.5f, 0.5f); 
+        centerCuboContainerShader.setVec3("lightPoints[0].specular", 	1.0f, 1.0f, 1.0f);
+        centerCuboContainerShader.setVec3("lightPoints[0].position", lightStaticPos.x, lightStaticPos.y, lightStaticPos.z);
+        centerCuboContainerShader.setFloat("lightPoints[0].constant", 	1.0f);
+        centerCuboContainerShader.setFloat("lightPoints[0].linear", 	0.0014);
+        centerCuboContainerShader.setFloat("lightPoints[0].cuadratic", 0.000007);
 
         const float radiusLightRound =  4.0f;
         const float lightRoundx = sin(glfwGetTime()) * radiusLightRound;
         const float lightRoundz = cos(glfwGetTime()) * radiusLightRound;
-        centarCuboContainerShader.setVec3("lightPoints[1].ambient",  0.2f, 0.2f, 0.2f);
-        centarCuboContainerShader.setVec3("lightPoints[1].diffuse",  0.5f, 0.5f, 0.5f); 
-        centarCuboContainerShader.setVec3("lightPoints[1].specular", 	1.0f, 1.0f, 1.0f);
-        centarCuboContainerShader.setVec3("lightPoints[1].position", lightRoundx, 0.0f, lightRoundz);
+        centerCuboContainerShader.setVec3("lightPoints[1].ambient",  0.2f, 0.2f, 0.2f);
+        centerCuboContainerShader.setVec3("lightPoints[1].diffuse",  0.5f, 0.5f, 0.5f); 
+        centerCuboContainerShader.setVec3("lightPoints[1].specular", 	1.0f, 1.0f, 1.0f);
+        centerCuboContainerShader.setVec3("lightPoints[1].position", lightRoundx, 0.0f, lightRoundz);
 
-        centarCuboContainerShader.setFloat("lightPoints[1].constant", 	1.0f);
-        centarCuboContainerShader.setFloat("lightPoints[1].linear", 	0.0014	);
-        centarCuboContainerShader.setFloat("lightPoints[1].cuadratic", 0.000007);
+        centerCuboContainerShader.setFloat("lightPoints[1].constant", 	1.0f);
+        centerCuboContainerShader.setFloat("lightPoints[1].linear", 	0.0014	);
+        centerCuboContainerShader.setFloat("lightPoints[1].cuadratic", 0.000007);
 
-        centarCuboContainerShader.setVec3("viewPos",  cameraPos.x, cameraPos.y, cameraPos.z);
-        centarCuboContainerShader.setMat4("model", model);
+        centerCuboContainerShader.setVec3("viewPos",  cameraPos.x, cameraPos.y, cameraPos.z);
+        centerCuboContainerShader.setMat4("model", model);
 
         model = glm::translate(model,    glm::vec3(0.0f, 0.0f, 0.0f));
-        centarCuboContainerShader.setMat4("model", model);
+        centerCuboContainerShader.setMat4("model", model);
         glBindVertexArray(cuadrado_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
@@ -282,18 +254,6 @@ float vertices_triangulo[] = {
         glBindVertexArray(lightRound_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        //cubo que que muestra la direccion de la luz direccional
-        // lightDirectionalShader.use();
-        // lightDirectionalShader.setMat4("projection", projection);
-        // lightDirectionalShader.setMat4("view", view);
-        // model         = glm::mat4(1.0f);
-        // model = glm::translate(model,  lightDirectionalPos);
-        // model = glm::rotate(model, glm::radians(-135.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-        // model = glm::scale(model, glm::vec3(0.2f));
-        // lightDirectionalShader.setMat4("model", model);
-        // glBindVertexArray(lightDirectional_vao);
-        // glDrawArrays(GL_TRIANGLES, 0, 36);
-
         glfwSetKeyCallback(window, key_callback);  
         glfwPollEvents();
         glfwSwapBuffers(window);
@@ -301,7 +261,6 @@ float vertices_triangulo[] = {
 glDeleteVertexArrays(1, &cuadrado_vao);
 glDeleteVertexArrays(1, &lightStatic_vao);
 glDeleteVertexArrays(1, &lightRound_vao);
-// glDeleteVertexArrays(1, &lightDirectional_vao);
 glDeleteBuffers(1, &vbo);
 glfwTerminate();
 }
@@ -312,66 +271,62 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }  
 void processInput(GLFWwindow *window)
 {
-    if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+    const float cameraSpeed =2.5f * deltaTime;
 
-    if( textureSelection != 1){
-        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_1) == GLFW_PRESS ){
-            texture1 = loadTexture("images/mosaic_figura3.jpg");
-            texture2 = loadTexture("images/mosaic_figura3_especular.jpg");
-            textureSelection = 1;
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS){
+        if (acumulador_v < 1.4f){
+            acumulador_v += cameraSpeed;
         }
+        _y = sin(acumulador_v) * orbitalRadius;
+        _z = cos(acumulador_h) * orbitalRadius;
+        cameraPos = glm::vec3(_x,  _y, _z);
     }
-    if(textureSelection != 2){
-        if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS  || glfwGetKey(window, GLFW_KEY_KP_2) == GLFW_PRESS ){
-            texture1 = loadTexture("images/grass_figura2.jpg");
-            texture2 = loadTexture("images/grass_figura2_especular.jpg");
-            textureSelection = 2;
+    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS){
+        if (acumulador_v > -1.4f){
+            acumulador_v -= cameraSpeed;
         }
+        _y = sin(acumulador_v) * orbitalRadius;
+        _z = cos(acumulador_h) * orbitalRadius;
+        cameraPos = glm::vec3(_x,  _y, _z);
     }
-    if(textureSelection != 3){
-        if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_3) == GLFW_PRESS ){
-            texture1 = loadTexture("images/bloques_figura1.jpg");
-            texture2 = loadTexture("images/bloques_figura1_especular.jpg");
-            textureSelection = 3;
-        }
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS){
+        acumulador_h += cameraSpeed;
+        _x = sin(acumulador_h) * orbitalRadius;
+        _z = cos(acumulador_h) * orbitalRadius;
+        cameraPos = glm::vec3(_x ,  _y , _z );
     }
-
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS){
+        acumulador_h -= cameraSpeed;
+        _x = sin(acumulador_h) * orbitalRadius;
+        _z = cos(acumulador_h) * orbitalRadius;
+        cameraPos = glm::vec3(_x ,  _y, _z );
+    }
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {   
-    if(key == GLFW_KEY_RIGHT){
+     if(key == GLFW_KEY_1 || key == GLFW_KEY_KP_1){
         switch (action ) {
             case GLFW_PRESS:
-                    orbitalDirection = DERECHA;
+                    textureSelection = 0;
                     break;
             case  GLFW_REPEAT:
                     break;
             }
     }
-    if(key == GLFW_KEY_LEFT){
+     if(key == GLFW_KEY_2 || key == GLFW_KEY_KP_2){
         switch (action ) {
             case GLFW_PRESS:
-                    orbitalDirection = IZQUIERDA;
+                    textureSelection = 1;
                     break;
             case  GLFW_REPEAT:
                     break;
             }
     }
-    if(key == GLFW_KEY_UP){
+     if(key == GLFW_KEY_3 || key == GLFW_KEY_KP_3){
         switch (action ) {
             case GLFW_PRESS:
-                    orbitalDirection = ARRIBA;
-                    break;
-            case  GLFW_REPEAT:
-                    break;
-            }
-    }
-    if(key == GLFW_KEY_DOWN){
-        switch (action ) {
-            case GLFW_PRESS:
-                    orbitalDirection = ABAJO;
+                    textureSelection = 2;
                     break;
             case  GLFW_REPEAT:
                     break;
@@ -400,51 +355,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                     break;
             }
     }
-}
-
-void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
-{
-    float xpos = static_cast<float>(xposIn);
-    float ypos = static_cast<float>(yposIn);
-
-    if (firstMouse)
-    {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
-    }
-
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; 
-    lastX = xpos;
-    lastY = ypos;
-
-    float sensitivity = 0.1f;
-    xoffset *= sensitivity;
-    yoffset *= sensitivity;
-
-    yaw += xoffset;
-    pitch += yoffset;
-
-    if (pitch > 89.0f)
-        pitch = 89.0f;
-    if (pitch < -89.0f)
-        pitch = -89.0f;
-
-    glm::vec3 front;
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
-    cameraFront = glm::normalize(front);
-}
-
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-{
-    fov -= (float)yoffset;
-    if (fov < 1.0f)
-        fov = 1.0f;
-    if (fov > 45.0f)
-        fov = 45.0f;
 }
 
 unsigned int loadTexture(char const * path)
